@@ -343,8 +343,8 @@ def generic_chinese_noun(index):
 		"PRE_RULES": [
 		FiberRule(DISINHIBIT, LEX, SUBJ, 0), 
 		FiberRule(DISINHIBIT, LEX, OBJ, 0),
-		FiberRule(DISINHIBIT, LEX, DET, 0), # For Quantifier
-		FiberRule(DISINHIBIT, LEX, ADJ, 0), # For Adjective
+		# FiberRule(DISINHIBIT, LEX, DET, 0), # REMOVED: Prevent Noun from overwriting Quantifier
+		# FiberRule(DISINHIBIT, LEX, ADJ, 0), # REMOVED: Prevent Noun from overwriting Adjective
 		FiberRule(DISINHIBIT, DET, SUBJ, 0),
 		FiberRule(DISINHIBIT, DET, OBJ, 0),
 		FiberRule(DISINHIBIT, ADJ, SUBJ, 0),
@@ -458,7 +458,7 @@ CHINESE_LEXEME_DICT = {
 	"愚蠢": generic_chinese_adjective(9),
 	"硬邦邦的": generic_chinese_adjective(10),
 	"聪明的": generic_chinese_adjective(11),
-	"善良": generic_chinese_adjective(12),
+	"善良": generic_chinese_intrans_verb(12), # Treat as stative verb for "你真善良"
 	"无可奈何地": generic_chinese_adverb(13),
 	"愤怒地": generic_chinese_adverb(14),
 	"真": generic_chinese_adverb(15),
@@ -466,6 +466,17 @@ CHINESE_LEXEME_DICT = {
 }
 
 CHINESE_AREAS = [LEX, DET, SUBJ, OBJ, VERB, ADJ, ADVERB]
+CHINESE_RECURRENT_AREAS = [SUBJ, OBJ, VERB, ADJ, ADVERB, DET]
+
+CHINESE_READOUT_RULES = {
+	VERB: [LEX, SUBJ, OBJ, ADVERB, ADJ],
+	SUBJ: [LEX, DET, ADJ],
+	OBJ: [LEX, DET, ADJ],
+	ADJ: [LEX],
+	DET: [LEX],
+	ADVERB: [LEX],
+	LEX: [],
+}
 
 class ParserBrain(brain.Brain):
 	def __init__(self, p, lexeme_dict={}, all_areas=[], recurrent_areas=[], initial_areas=[], readout_rules={}):
@@ -631,9 +642,9 @@ class ChineseParserBrain(ParserBrain):
 		ParserBrain.__init__(self, p, 
 			lexeme_dict=CHINESE_LEXEME_DICT, 
 			all_areas=CHINESE_AREAS, 
-			recurrent_areas=RECURRENT_AREAS, 
+			recurrent_areas=CHINESE_RECURRENT_AREAS, 
 			initial_areas=[LEX, SUBJ, VERB],
-			readout_rules=ENGLISH_READOUT_RULES)
+			readout_rules=CHINESE_READOUT_RULES)
 		self.verbose = verbose
 
 		LEX_n = LEX_SIZE * LEX_k
@@ -648,11 +659,11 @@ class ChineseParserBrain(ParserBrain):
 		self.add_area(ADVERB, non_LEX_n, non_LEX_k, default_beta)
 
 		custom_plasticities = defaultdict(list)
-		for area in RECURRENT_AREAS:
+		for area in CHINESE_RECURRENT_AREAS:
 			custom_plasticities[LEX].append((area, LEX_beta))
 			custom_plasticities[area].append((LEX, LEX_beta))
 			custom_plasticities[area].append((area, recurrent_beta))
-			for other_area in RECURRENT_AREAS:
+			for other_area in CHINESE_RECURRENT_AREAS:
 				if other_area == area:
 					continue
 				custom_plasticities[area].append((other_area, interarea_beta))
@@ -851,8 +862,23 @@ def parse(sentence="cats chase mice", language="English", p=0.1, LEX_k=20,
 		lexeme_dict = CHINESE_LEXEME_DICT
 		all_areas = CHINESE_AREAS
 		explicit_areas = EXPLICIT_AREAS
-		readout_rules = ENGLISH_READOUT_RULES
+		readout_rules = CHINESE_READOUT_RULES
+		# Ensure dictionary words are treated as single tokens
+		for word in lexeme_dict.keys():
+			jieba.add_word(word)
 		sentence = list(jieba.cut(sentence))
+		
+		# Manual adjustments for tokenization
+		new_sentence = []
+		for token in sentence:
+			if token == "踢球":
+				new_sentence.extend(["踢", "球"])
+			else:
+				new_sentence.append(token)
+		sentence = new_sentence
+
+		if verbose:
+			print(f"Tokenized sentence: {sentence}")
 
 	parseHelper(b, sentence, p, LEX_k, project_rounds, verbose, debug, 
 		lexeme_dict, all_areas, explicit_areas, readout_method, readout_rules)
@@ -862,7 +888,8 @@ def parseHelper(b, sentence, p, LEX_k, project_rounds, verbose, debug,
 	lexeme_dict, all_areas, explicit_areas, readout_method, readout_rules):
 	debugger = ParserDebugger(b, all_areas, explicit_areas)
 
-	sentence = sentence.split(" ")
+	if isinstance(sentence, str):
+		sentence = sentence.split(" ")
 
 	extreme_debug = False
 
