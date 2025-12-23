@@ -2,3 +2,4 @@ numpy
 scipy
 pptree
 matplotlib
+jieba
