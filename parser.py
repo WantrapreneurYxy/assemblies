@@ -5,6 +5,7 @@ import numpy as np
 import pptree
 import json
 import copy
+import jieba
 
 from collections import namedtuple
 from collections import defaultdict
@@ -20,6 +21,7 @@ PREP = "PREP"
 PREP_P = "PREP_P"
 ADJ = "ADJ"
 ADVERB = "ADVERB"
+QUANT = DET # Map Quantifier to DET for now
 
 # Unique to Russian
 NOM = "NOM"
@@ -335,6 +337,136 @@ RUSSIAN_READOUT_RULES = {
 	LEX: [],
 }
 
+def generic_chinese_noun(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		FiberRule(DISINHIBIT, LEX, SUBJ, 0), 
+		FiberRule(DISINHIBIT, LEX, OBJ, 0),
+		FiberRule(DISINHIBIT, LEX, DET, 0), # For Quantifier
+		FiberRule(DISINHIBIT, LEX, ADJ, 0), # For Adjective
+		FiberRule(DISINHIBIT, DET, SUBJ, 0),
+		FiberRule(DISINHIBIT, DET, OBJ, 0),
+		FiberRule(DISINHIBIT, ADJ, SUBJ, 0),
+		FiberRule(DISINHIBIT, ADJ, OBJ, 0),
+		FiberRule(DISINHIBIT, VERB, OBJ, 0),
+		],
+		"POST_RULES": [
+		AreaRule(INHIBIT, DET, 0),
+		AreaRule(INHIBIT, ADJ, 0),
+		FiberRule(INHIBIT, LEX, SUBJ, 0),
+		FiberRule(INHIBIT, LEX, OBJ, 0),
+		FiberRule(INHIBIT, LEX, DET, 0),
+		FiberRule(INHIBIT, LEX, ADJ, 0),
+		FiberRule(INHIBIT, ADJ, SUBJ, 0),
+		FiberRule(INHIBIT, ADJ, OBJ, 0),
+		FiberRule(INHIBIT, DET, SUBJ, 0),
+		FiberRule(INHIBIT, DET, OBJ, 0),
+		FiberRule(INHIBIT, VERB, OBJ, 0),
+		FiberRule(DISINHIBIT, LEX, SUBJ, 1),
+		FiberRule(DISINHIBIT, LEX, OBJ, 1),
+		FiberRule(DISINHIBIT, DET, SUBJ, 1),
+		FiberRule(DISINHIBIT, DET, OBJ, 1),
+		FiberRule(DISINHIBIT, ADJ, SUBJ, 1),
+		FiberRule(DISINHIBIT, ADJ, OBJ, 1),
+		FiberRule(INHIBIT, VERB, ADJ, 0),
+		]
+	}
+
+def generic_chinese_trans_verb(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		FiberRule(DISINHIBIT, LEX, VERB, 0),
+		FiberRule(DISINHIBIT, VERB, SUBJ, 0),
+		FiberRule(DISINHIBIT, VERB, ADVERB, 0),
+		AreaRule(DISINHIBIT, ADVERB, 1),
+		],
+		"POST_RULES": [
+		FiberRule(INHIBIT, LEX, VERB, 0),
+		AreaRule(DISINHIBIT, OBJ, 0),
+		AreaRule(INHIBIT, SUBJ, 0),
+		AreaRule(INHIBIT, ADVERB, 0),
+		]
+	}
+
+def generic_chinese_intrans_verb(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		FiberRule(DISINHIBIT, LEX, VERB, 0),
+		FiberRule(DISINHIBIT, VERB, SUBJ, 0),
+		FiberRule(DISINHIBIT, VERB, ADVERB, 0),
+		AreaRule(DISINHIBIT, ADVERB, 1),
+		],
+		"POST_RULES": [
+		FiberRule(INHIBIT, LEX, VERB, 0),
+		AreaRule(INHIBIT, SUBJ, 0),
+		AreaRule(INHIBIT, ADVERB, 0),
+		]
+	}
+
+def generic_chinese_adjective(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		AreaRule(DISINHIBIT, ADJ, 0),
+		FiberRule(DISINHIBIT, LEX, ADJ, 0)
+		],
+		"POST_RULES": [
+		FiberRule(INHIBIT, LEX, ADJ, 0),
+		FiberRule(INHIBIT, VERB, ADJ, 0),
+		]
+	}
+
+def generic_chinese_adverb(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		AreaRule(DISINHIBIT, ADVERB, 0),
+		FiberRule(DISINHIBIT, LEX, ADVERB, 0)
+		],
+		"POST_RULES": [
+		FiberRule(INHIBIT, LEX, ADVERB, 0),
+		AreaRule(INHIBIT, ADVERB, 1),
+		]
+	}
+
+def generic_chinese_quantifier(index):
+	return {
+		"index": index,
+		"PRE_RULES": [
+		AreaRule(DISINHIBIT, DET, 0),
+		FiberRule(DISINHIBIT, LEX, DET, 0)
+		],
+		"POST_RULES": [
+		FiberRule(INHIBIT, LEX, DET, 0),
+		FiberRule(INHIBIT, VERB, ADJ, 0),
+		]
+	}
+
+CHINESE_LEXEME_DICT = {
+	"我": generic_chinese_noun(0),
+	"你": generic_chinese_noun(1),
+	"人类": generic_chinese_noun(2),
+	"球": generic_chinese_noun(3),
+	"踢": generic_chinese_trans_verb(4),
+	"红温了": generic_chinese_intrans_verb(5),
+	"并非": generic_chinese_trans_verb(6), # Treat as verb/copula
+	"是": generic_chinese_trans_verb(7),
+	"愚蠢的": generic_chinese_adjective(8),
+	"愚蠢": generic_chinese_adjective(9),
+	"硬邦邦的": generic_chinese_adjective(10),
+	"聪明的": generic_chinese_adjective(11),
+	"善良": generic_chinese_adjective(12),
+	"无可奈何地": generic_chinese_adverb(13),
+	"愤怒地": generic_chinese_adverb(14),
+	"真": generic_chinese_adverb(15),
+	"一颗": generic_chinese_quantifier(16),
+}
+
+CHINESE_AREAS = [LEX, DET, SUBJ, OBJ, VERB, ADJ, ADVERB]
+
 class ParserBrain(brain.Brain):
 	def __init__(self, p, lexeme_dict={}, all_areas=[], recurrent_areas=[], initial_areas=[], readout_rules={}):
 		brain.Brain.__init__(self, p)
@@ -486,6 +618,41 @@ class RussianParserBrain(ParserBrain):
 			custom_plasticities[area].append((LEX, LEX_beta))
 			custom_plasticities[area].append((area, recurrent_beta))
 			for other_area in recurrent_areas:
+				if other_area == area:
+					continue
+				custom_plasticities[area].append((other_area, interarea_beta))
+
+		self.update_plasticities(area_update_map=custom_plasticities)
+
+
+class ChineseParserBrain(ParserBrain):
+	def __init__(self, p, non_LEX_n=10000, non_LEX_k=100, LEX_k=20, 
+		default_beta=0.2, LEX_beta=1.0, recurrent_beta=0.05, interarea_beta=0.5, verbose=False):
+		ParserBrain.__init__(self, p, 
+			lexeme_dict=CHINESE_LEXEME_DICT, 
+			all_areas=CHINESE_AREAS, 
+			recurrent_areas=RECURRENT_AREAS, 
+			initial_areas=[LEX, SUBJ, VERB],
+			readout_rules=ENGLISH_READOUT_RULES)
+		self.verbose = verbose
+
+		LEX_n = LEX_SIZE * LEX_k
+		self.add_explicit_area(LEX, LEX_n, LEX_k, default_beta)
+
+		DET_k = LEX_k
+		self.add_area(SUBJ, non_LEX_n, non_LEX_k, default_beta)
+		self.add_area(OBJ, non_LEX_n, non_LEX_k, default_beta)
+		self.add_area(VERB, non_LEX_n, non_LEX_k, default_beta)
+		self.add_area(ADJ, non_LEX_n, non_LEX_k, default_beta)
+		self.add_area(DET, non_LEX_n, DET_k, default_beta)
+		self.add_area(ADVERB, non_LEX_n, non_LEX_k, default_beta)
+
+		custom_plasticities = defaultdict(list)
+		for area in RECURRENT_AREAS:
+			custom_plasticities[LEX].append((area, LEX_beta))
+			custom_plasticities[area].append((LEX, LEX_beta))
+			custom_plasticities[area].append((area, recurrent_beta))
+			for other_area in RECURRENT_AREAS:
 				if other_area == area:
 					continue
 				custom_plasticities[area].append((other_area, interarea_beta))
@@ -678,6 +845,14 @@ def parse(sentence="cats chase mice", language="English", p=0.1, LEX_k=20,
 		all_areas = RUSSIAN_AREAS
 		explicit_areas = RUSSIAN_EXPLICIT_AREAS
 		readout_rules = RUSSIAN_READOUT_RULES
+
+	if language == "Chinese":
+		b = ChineseParserBrain(p, LEX_k=LEX_k, verbose=verbose)
+		lexeme_dict = CHINESE_LEXEME_DICT
+		all_areas = CHINESE_AREAS
+		explicit_areas = EXPLICIT_AREAS
+		readout_rules = ENGLISH_READOUT_RULES
+		sentence = list(jieba.cut(sentence))
 
 	parseHelper(b, sentence, p, LEX_k, project_rounds, verbose, debug, 
 		lexeme_dict, all_areas, explicit_areas, readout_method, readout_rules)

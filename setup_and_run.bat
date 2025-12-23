@@ -89,11 +89,11 @@ if !errorlevel! neq 0 (
 echo [INFO] Environment setup complete.
 echo.
 echo ==========================================
-echo      Running parser.py (Demo)
+echo      Running run_all.py (Demo)
 echo ==========================================
 echo.
 
-python parser.py
+python run_all.py
 
 echo.
 echo ==========================================
