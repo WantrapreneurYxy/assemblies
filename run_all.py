@@ -6,6 +6,7 @@ sentences = [
     "我并非人类",
     "我踢球",
     "你真善良",
+    "你真温柔善良大度",
     "愚蠢的我并非人类",
     "愚蠢的我踢球",
     "我并非愚蠢的人类",
@@ -31,7 +32,7 @@ for s in sentences:
         else:
             new_tokens.append(token)
     print(f"Tokens: {new_tokens}")
-    
+
     try:
         parser.parse(sentence=s, language="Chinese", verbose=False)
     except Exception as e:
